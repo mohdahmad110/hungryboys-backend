@@ -488,14 +488,53 @@ Items: ${order.cartItems || ''}`;
       order.gender === 'female' ? orderSummary : ''  // Female order details
     ]];
 
-    // 3. Append to the Master Sheet and campus-specific sheet
-    // Append to Master sheet
+    // 3. Append to campus-specific sheet
+    const tabName = `${order.universityName}_${order.campusName}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    
+    // Prepare order data for campus sheet (with university and campus names)
+    const campusOrderData = [[
+      order.universityName || '',
+      order.campusName || '',
+      order.firstName || '',
+      order.lastName || '',
+      order.room || '',
+      order.phone || '',
+      order.email || '',
+      order.gender || '',
+      order.persons || '',
+      order.deliveryCharge || '',
+      order.itemTotal || '',
+      order.grandTotal || '',
+      order.cartItems || '',
+      timestamp,
+      order.accountTitle || '',
+      order.bankName || '',
+      order.screenshotURL || '',
+      order.specialInstruction || '',
+      // Gender-specific columns
+      order.gender === 'male' ? order.firstName + ' ' + order.lastName : '',
+      order.gender === 'male' ? orderSummary : '',
+      order.gender === 'female' ? order.firstName + ' ' + order.lastName : '',
+      order.gender === 'female' ? orderSummary : ''
+    ]];
+
+    // Append to campus-specific sheet
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Master!A2',  // Append to Master sheet
+      range: `${tabName}!A:R`,  // Append to campus-specific sheet
       valueInputOption: 'RAW',
       resource: {
-        values: orderData,
+        values: campusOrderData,
+      },
+    });
+
+    // Also append to Master sheet for overall tracking
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Master!A:R',  // Append to Master sheet
+      valueInputOption: 'RAW',
+      resource: {
+        values: campusOrderData,
       },
     });
 
