@@ -17,6 +17,7 @@ const allowedOrigins = [
   'http://localhost:5174',
   'https://www.hungryboys.live',
   'https://hungryboys2-0.vercel.app',
+  'https://hungryboys-backend-production.up.railway.app',
 ];
 
 const corsOptions = {
@@ -58,7 +59,7 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 
 // ✅ Google Sheets Configuration
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '1VCvhWcx3vOtxeiPe5KuWuDIbWSKfvRZkv4Y1P_M6QuM';
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID ;
 
 // ✅ Root route
 app.get('/', (req, res) => {
@@ -102,29 +103,72 @@ app.post('/api/sheets/create', async (req, res) => {
               title: tabName,
               gridProperties: {
                 rowCount: 1000,
-                columnCount: 17
+                columnCount: 22  // Increased for new gender-specific columns
               }
             }
           }
         }]
       }
     });
+  console.log(`Created sheet tab ${tabName} (batchUpdate response keys: ${Object.keys(response.data || {})})`);
 
     // Add headers to the new sheet
     const headers = [
-      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email',
+      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
       'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
-      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions'
+      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+      'maleOrders', 'maleOrderDetails', // New columns for male orders
+      'femaleOrders', 'femaleOrderDetails' // New columns for female orders
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${tabName}!A1:Q1`,
+      range: `${tabName}!A1:V1`,  // Extended range for new columns
       valueInputOption: 'RAW',
       resource: {
         values: [headers]
       }
     });
+
+    // Read back and log headers for debugging
+    try {
+      const verify = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${tabName}!A1:V1`
+      });
+      console.log(`Recreate read-back for ${tabName}:`, (verify.data.values && verify.data.values[0]) || []);
+    } catch (vErr) {
+      console.warn(`Failed to read back headers after recreate for ${tabName}:`, vErr);
+    }
+    console.log(`Wrote headers to ${tabName}:`, headers);
+
+    // Verify headers were written; if not, attempt a recreate (clear + write) once.
+    try {
+      const readResp = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${tabName}!A1:V1`
+      });
+      const written = (readResp.data.values && readResp.data.values[0]) || [];
+      console.log(`Read back headers for ${tabName}:`, written);
+      // If key columns missing, run a recreate to ensure full header set
+      if (!written.includes('maleOrders') || !written.includes('femaleOrders')) {
+        console.log(`Headers incomplete for ${tabName}, running recreate fallback...`);
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${tabName}!A:Z`
+        });
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${tabName}!A1:V1`,
+          valueInputOption: 'RAW',
+          resource: { values: [headers] }
+        });
+            console.log(`Fallback recreate headers written for ${tabName}`);
+        console.log(`Fallback recreate headers written for ${tabName}`);
+      }
+    } catch (verifyErr) {
+      console.warn('Header verification/recreate fallback failed for', tabName, verifyErr);
+    }
 
     res.json(response.data);
   } catch (error) {
@@ -175,16 +219,17 @@ app.get('/api/sheets/orders/:sheetName', async (req, res) => {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A2:Q${maxRows + 1}`,
+      range: `${sheetName}!A2:V${maxRows + 1}`,
     });
 
     const rows = response.data.values || [];
     const orders = rows.map((row, index) => {
       const order = {};
       const columns = [
-        'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email',
+        'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
         'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
-        'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions'
+        'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+        'maleOrders', 'maleOrderDetails', 'femaleOrders', 'femaleOrderDetails'
       ];
       
       columns.forEach((column, colIndex) => {
@@ -213,7 +258,7 @@ app.post('/api/sheets/orders/:sheetName', async (req, res) => {
 
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A:Q`,
+      range: `${sheetName}!A:V`, // Ensure append covers all columns including gender-specific ones
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
       resource: {
@@ -250,7 +295,7 @@ app.post('/api/sheets/master', async (req, res) => {
               title: 'Master',
               gridProperties: {
                 rowCount: 10000,
-                columnCount: 17
+                columnCount: 22  // Increased for gender-specific columns
               }
             }
           }
@@ -260,14 +305,16 @@ app.post('/api/sheets/master', async (req, res) => {
 
     // Add headers to master sheet
     const headers = [
-      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email',
+      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
       'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
-      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions'
+      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+      'maleOrders', 'maleOrderDetails', // New columns for male orders
+      'femaleOrders', 'femaleOrderDetails' // New columns for female orders
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Master!A1:Q1',
+      range: 'Master!A1:V1',  // Extended range for gender columns
       valueInputOption: 'RAW',
       resource: {
         values: [headers]
@@ -278,6 +325,132 @@ app.post('/api/sheets/master', async (req, res) => {
   } catch (error) {
     console.error('❌ Error creating master sheet:', error);
     res.status(500).json({ error: 'Failed to create master sheet' });
+  }
+});
+
+// ✅ Recreate master sheet with updated structure
+app.post('/api/sheets/recreate-master', async (req, res) => {
+  try {
+    console.log('🔄 Recreating master sheet with updated structure...');
+
+    // Clear the master sheet first
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Master!A:Z'
+    });
+
+    // Add updated headers to master sheet
+    const headers = [
+      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
+      'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
+      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+      'maleOrders', 'maleOrderDetails', // New columns for male orders
+      'femaleOrders', 'femaleOrderDetails' // New columns for female orders
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Master!A1:V1',  // Extended range for new columns
+      valueInputOption: 'RAW',
+      resource: {
+        values: [headers]
+      }
+    });
+
+    console.log('✅ Master sheet recreated successfully with gender column');
+    res.json({ message: 'Master sheet recreated successfully with gender column' });
+  } catch (error) {
+    console.error('❌ Error recreating master sheet:', error);
+    res.status(500).json({ error: 'Failed to recreate master sheet' });
+  }
+});
+
+// ✅ Recreate campus sheet with updated structure
+app.post('/api/sheets/recreate-campus/:tabName', async (req, res) => {
+  try {
+    const { tabName } = req.params;
+    console.log(`🔄 Recreating campus sheet: ${tabName} with updated structure...`);
+
+    // Clear the campus sheet first
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A:Z`
+    });
+
+    // Add updated headers to campus sheet
+    const headers = [
+      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
+      'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
+      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+      'maleOrders', 'maleOrderDetails', // New columns for male orders
+      'femaleOrders', 'femaleOrderDetails' // New columns for female orders
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A1:V1`,  // Extended range for new columns
+      valueInputOption: 'RAW',
+      resource: {
+        values: [headers]
+      }
+    });
+
+    console.log(`✅ Campus sheet ${tabName} recreated successfully with gender column`);
+    res.json({ message: `Campus sheet ${tabName} recreated successfully with gender column` });
+  } catch (error) {
+    console.error(`❌ Error recreating campus sheet ${req.params.tabName}:`, error);
+    res.status(500).json({ error: 'Failed to recreate campus sheet' });
+  }
+});
+
+// ✅ Recreate campus sheet (body variant) - accepts { tabName } in POST body
+app.post('/api/sheets/recreate-campus', async (req, res) => {
+  try {
+    const { tabName } = req.body;
+    if (!tabName) return res.status(400).json({ error: 'tabName is required in request body' });
+
+    console.log(`🔄 Recreating campus sheet (body) : ${tabName} with updated structure...`);
+
+    // Clear the campus sheet first
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A:Z`
+    });
+
+    // Add updated headers to campus sheet
+    const headers = [
+      'universityName', 'campusName', 'firstName', 'lastName', 'room', 'phone', 'email', 'gender',
+      'persons', 'deliveryCharge', 'itemTotal', 'grandTotal', 'cartItems', 'timestamp',
+      'accountTitle', 'bankName', 'screenshotURL', 'Special Instructions',
+      'maleOrders', 'maleOrderDetails', // New columns for male orders
+      'femaleOrders', 'femaleOrderDetails' // New columns for female orders
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A1:V1`,  // Extended range for new columns
+      valueInputOption: 'RAW',
+      resource: {
+        values: [headers]
+      }
+    });
+
+    // Read back and log headers for debugging
+    try {
+      const verify = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${tabName}!A1:V1`
+      });
+      console.log(`Recreate (body) read-back for ${tabName}:`, (verify.data.values && verify.data.values[0]) || []);
+    } catch (vErr) {
+      console.warn(`Failed to read back headers after recreate (body) for ${tabName}:`, vErr);
+    }
+
+    console.log(`✅ Campus sheet ${tabName} recreated successfully with gender column (body)`);
+    res.json({ message: `Campus sheet ${tabName} recreated successfully with gender column` });
+  } catch (error) {
+    console.error(`❌ Error recreating campus sheet (body):`, error);
+    res.status(500).json({ error: 'Failed to recreate campus sheet' });
   }
 });
 
@@ -304,36 +477,50 @@ app.post('/submit-order', async (req, res) => {
     }
 
     // 2. Prepare data for Google Sheets
+    const timestamp = new Date().toLocaleString('en-PK', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    // Format orders for gender-specific columns
+    const orderSummary = `Order at ${timestamp}:
+Total: Rs. ${order.grandTotal}
+Items: ${order.cartItems || ''}`;
+
     const orderData = [[
       order.firstName || '',
       order.lastName || '',
       order.room || '',
       order.phone || '',
       order.email || '',
+      order.gender || '',  // Include gender in main columns
       order.persons || '',
       order.deliveryCharge || '',
       order.itemTotal || '',
       order.grandTotal || '',
       order.cartItems || '',
-      new Date().toLocaleString('en-PK', {
-        timeZone: 'Asia/Karachi',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }),
+      timestamp,
       order.accountTitle || '',
       order.bankName || '',
       order.screenshotURL || '',
       order.specialInstruction || '',
+      // Gender-specific columns
+      order.gender === 'male' ? order.firstName + ' ' + order.lastName : '',  // Male name
+      order.gender === 'male' ? orderSummary : '',  // Male order details
+      order.gender === 'female' ? order.firstName + ' ' + order.lastName : '', // Female name
+      order.gender === 'female' ? orderSummary : ''  // Female order details
     ]];
 
-    // 3. Append to the Google Sheet
+    // 3. Append to the Master Sheet and campus-specific sheet
+    // Append to Master sheet
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'orders!A2',
+      range: 'Master!A2',  // Append to Master sheet
       valueInputOption: 'RAW',
       resource: {
         values: orderData,
