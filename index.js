@@ -110,7 +110,6 @@ app.post('/api/sheets/create', async (req, res) => {
         }]
       }
     });
-  console.log(`Created sheet tab ${tabName} (batchUpdate response keys: ${Object.keys(response.data || {})})`);
 
     // Add headers to the new sheet
     const headers = [
@@ -130,17 +129,15 @@ app.post('/api/sheets/create', async (req, res) => {
       }
     });
 
-    // Read back and log headers for debugging
+    // Optional: verify headers were written (silent on success)
     try {
-      const verify = await sheets.spreadsheets.values.get({
+      await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
         range: `${tabName}!A1:V1`
       });
-      console.log(`Recreate read-back for ${tabName}:`, (verify.data.values && verify.data.values[0]) || []);
     } catch (vErr) {
-      console.warn(`Failed to read back headers after recreate for ${tabName}:`, vErr);
+      // verification error handled in the following verification block
     }
-    console.log(`Wrote headers to ${tabName}:`, headers);
 
     // Verify headers were written; if not, attempt a recreate (clear + write) once.
     try {
@@ -149,10 +146,8 @@ app.post('/api/sheets/create', async (req, res) => {
         range: `${tabName}!A1:V1`
       });
       const written = (readResp.data.values && readResp.data.values[0]) || [];
-      console.log(`Read back headers for ${tabName}:`, written);
       // If key columns missing, run a recreate to ensure full header set
       if (!written.includes('maleOrders') || !written.includes('femaleOrders')) {
-        console.log(`Headers incomplete for ${tabName}, running recreate fallback...`);
         await sheets.spreadsheets.values.clear({
           spreadsheetId: SPREADSHEET_ID,
           range: `${tabName}!A:Z`
@@ -163,11 +158,9 @@ app.post('/api/sheets/create', async (req, res) => {
           valueInputOption: 'RAW',
           resource: { values: [headers] }
         });
-            console.log(`Fallback recreate headers written for ${tabName}`);
-        console.log(`Fallback recreate headers written for ${tabName}`);
       }
     } catch (verifyErr) {
-      console.warn('Header verification/recreate fallback failed for', tabName, verifyErr);
+      console.error('Header verification/recreate fallback failed for', tabName, verifyErr);
     }
 
     res.json(response.data);
@@ -331,8 +324,6 @@ app.post('/api/sheets/master', async (req, res) => {
 // ✅ Recreate master sheet with updated structure
 app.post('/api/sheets/recreate-master', async (req, res) => {
   try {
-    console.log('🔄 Recreating master sheet with updated structure...');
-
     // Clear the master sheet first
     await sheets.spreadsheets.values.clear({
       spreadsheetId: SPREADSHEET_ID,
@@ -356,8 +347,7 @@ app.post('/api/sheets/recreate-master', async (req, res) => {
         values: [headers]
       }
     });
-
-    console.log('✅ Master sheet recreated successfully with gender column');
+    // Master sheet recreated
     res.json({ message: 'Master sheet recreated successfully with gender column' });
   } catch (error) {
     console.error('❌ Error recreating master sheet:', error);
@@ -369,7 +359,6 @@ app.post('/api/sheets/recreate-master', async (req, res) => {
 app.post('/api/sheets/recreate-campus/:tabName', async (req, res) => {
   try {
     const { tabName } = req.params;
-    console.log(`🔄 Recreating campus sheet: ${tabName} with updated structure...`);
 
     // Clear the campus sheet first
     await sheets.spreadsheets.values.clear({
@@ -394,8 +383,6 @@ app.post('/api/sheets/recreate-campus/:tabName', async (req, res) => {
         values: [headers]
       }
     });
-
-    console.log(`✅ Campus sheet ${tabName} recreated successfully with gender column`);
     res.json({ message: `Campus sheet ${tabName} recreated successfully with gender column` });
   } catch (error) {
     console.error(`❌ Error recreating campus sheet ${req.params.tabName}:`, error);
@@ -409,8 +396,6 @@ app.post('/api/sheets/recreate-campus', async (req, res) => {
     const { tabName } = req.body;
     if (!tabName) return res.status(400).json({ error: 'tabName is required in request body' });
 
-    console.log(`🔄 Recreating campus sheet (body) : ${tabName} with updated structure...`);
-
     // Clear the campus sheet first
     await sheets.spreadsheets.values.clear({
       spreadsheetId: SPREADSHEET_ID,
@@ -434,19 +419,6 @@ app.post('/api/sheets/recreate-campus', async (req, res) => {
         values: [headers]
       }
     });
-
-    // Read back and log headers for debugging
-    try {
-      const verify = await sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${tabName}!A1:V1`
-      });
-      console.log(`Recreate (body) read-back for ${tabName}:`, (verify.data.values && verify.data.values[0]) || []);
-    } catch (vErr) {
-      console.warn(`Failed to read back headers after recreate (body) for ${tabName}:`, vErr);
-    }
-
-    console.log(`✅ Campus sheet ${tabName} recreated successfully with gender column (body)`);
     res.json({ message: `Campus sheet ${tabName} recreated successfully with gender column` });
   } catch (error) {
     console.error(`❌ Error recreating campus sheet (body):`, error);
