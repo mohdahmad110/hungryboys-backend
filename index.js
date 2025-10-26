@@ -49,7 +49,13 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
 } else {
   // Fallback to credentials.json file (for development)
   const credentialsPath = path.join(__dirname, 'credentials.json');
-  credentials = require(credentialsPath);
+  try {
+    credentials = require(credentialsPath);
+  } catch (error) {
+    console.error('❌ ERROR: credentials.json not found and GOOGLE_CREDENTIALS_BASE64 environment variable is not set.');
+    console.error('Please set GOOGLE_CREDENTIALS_BASE64 in your environment variables.');
+    process.exit(1);
+  }
 }
 
 // ✅ Authenticate with Google Sheets
