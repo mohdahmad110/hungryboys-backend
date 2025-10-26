@@ -4,17 +4,20 @@
   "description": "Express backend for food delivery app",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "provision:db": "node scripts/initMongo.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "mongodb": "^6.9.0",
     "axios": "^1.9.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
-    "googleapis": "^148.0.0"
+    "googleapis": "^148.0.0",
+    "firebase-admin": "^12.6.0"
   }
 }
