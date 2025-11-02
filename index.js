@@ -824,7 +824,9 @@ app.get('/api/restaurants', async (req, res) => {
       cuisine: r.cuisine,
       openTime: r.openTime,
       closeTime: r.closeTime,
-      is24x7: r.is24x7
+      is24x7: r.is24x7,
+      // Back-compat: some records may store imageUrl instead of photoURL
+      photoURL: r.photoURL || r.imageUrl || null
     }));
     res.json(normalized);
   } catch (e) {
@@ -862,19 +864,41 @@ app.get('/api/restaurants/:id', async (req, res) => {
 app.post('/api/restaurants', verifyFirebaseToken, loadUserProfile, async (req, res) => {
   try {
     const db = await getDb();
-    const { campusId, universityId, name, location, cuisine, openTime, closeTime, is24x7 } = req.body || {};
+    const { campusId, universityId, name, location, cuisine, openTime, closeTime, is24x7, photoURL } = req.body || {};
     if (!campusId || !universityId || !name) return res.status(400).json({ error: 'campusId, universityId, name are required' });
     if (isCampusAdmin(req.userProfile) && campusId !== req.userProfile.campusId) return res.status(403).json({ error: 'Not allowed for this campus' });
-    const doc = { campusId, universityId, name, location: location || '', cuisine: cuisine || '', openTime: openTime || '10:00 AM', closeTime: closeTime || '10:00 PM', is24x7: is24x7 ?? true };
+    
+    const doc = { 
+      campusId, 
+      universityId, 
+      name, 
+      location: location || '', 
+      cuisine: cuisine || '', 
+      openTime: openTime || '10:00 AM', 
+      closeTime: closeTime || '10:00 PM', 
+      is24x7: is24x7 ?? true,
+      photoURL: photoURL || null, // ALWAYS include photoURL field
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log('📝 Creating restaurant:', doc);
     const result = await db.collection('restaurants').insertOne(doc);
-    res.status(201).json({ ...doc, _id: result.insertedId });
+    const created = { ...doc, id: String(result.insertedId), _id: result.insertedId };
+    console.log('✅ Restaurant created with ID:', created.id);
+    res.status(201).json(created);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to create restaurant' });
+    console.error('❌ Restaurant creation failed:', e);
+    res.status(500).json({ error: 'Failed to create restaurant', detail: e.message });
   }
 });
 
 app.patch('/api/restaurants/:id', verifyFirebaseToken, loadUserProfile, async (req, res) => {
   try {
+    console.log('🔵 PATCH /api/restaurants/:id - Request received');
+    console.log('🔵 Request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔵 photoURL in body?', 'photoURL' in req.body, '- Value:', req.body.photoURL);
+    
     const db = await getDb();
     const { ObjectId } = require('mongodb');
     let _id;
@@ -886,12 +910,24 @@ app.patch('/api/restaurants/:id', verifyFirebaseToken, loadUserProfile, async (r
     const existing = await db.collection('restaurants').findOne({ _id });
     if (!existing) return res.status(404).json({ error: 'Restaurant not found' });
     if (isCampusAdmin(req.userProfile) && existing.campusId !== req.userProfile.campusId) return res.status(403).json({ error: 'Not allowed' });
-    const update = {};
-    ['name','location','cuisine','openTime','closeTime','is24x7'].forEach(k => { if (k in req.body) update[k] = req.body[k]; });
-    const result = await db.collection('restaurants').findOneAndUpdate({ _id }, { $set: update }, { returnDocument: 'after' });
+    
+    const update = { updatedAt: new Date() };
+    // Include photoURL in update even if null (to clear it if needed)
+    ['name','location','cuisine','openTime','closeTime','is24x7','photoURL'].forEach(k => { 
+      if (k in req.body) update[k] = req.body[k]; 
+    });
+    
+    console.log('📝 Updating restaurant', req.params.id, 'with update object:', JSON.stringify(update, null, 2));
+    const result = await db.collection('restaurants').findOneAndUpdate(
+      { _id }, 
+      { $set: update }, 
+      { returnDocument: 'after' }
+    );
+    console.log('✅ Restaurant updated successfully');
+    console.log('✅ Updated document photoURL:', result.value?.photoURL);
     res.json(result.value);
   } catch (e) {
-    console.error('Restaurant update failed:', e);
+    console.error('❌ Restaurant update failed:', e);
     res.status(500).json({ error: 'Failed to update restaurant', detail: e?.message });
   }
 });
