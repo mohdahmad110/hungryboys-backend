@@ -1241,18 +1241,14 @@ app.delete('/api/mart-items/:id', verifyFirebaseToken, loadUserProfile, async (r
 // =========================
 
 // Get campus settings (by campusId)
-app.get('/api/campus-settings/:campusId', verifyFirebaseToken, loadUserProfile, async (req, res) => {
+// Public: Get campus settings (by campusId) - no auth required so checkout can
+// fetch current settings even for unauthenticated users (guest checkout).
+app.get('/api/campus-settings/:campusId', async (req, res) => {
   try {
     const db = await getDb();
     const { campusId } = req.params;
-    
-    // Super admin can view any campus settings, campus admin only their own
-    if (isCampusAdmin(req.userProfile) && req.userProfile.campusId !== campusId) {
-      return res.status(403).json({ error: 'You can only view settings for your assigned campus' });
-    }
-
     const settings = await db.collection('campusSettings').findOne({ campusId });
-    
+
     if (!settings) {
       // Return default settings if none exist
       return res.json({
@@ -1263,7 +1259,7 @@ app.get('/api/campus-settings/:campusId', verifyFirebaseToken, loadUserProfile, 
         accountNumber: "54427000095103"
       });
     }
-    
+
     res.json(settings);
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch campus settings' });
