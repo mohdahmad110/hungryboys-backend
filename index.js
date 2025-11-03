@@ -1259,8 +1259,8 @@ app.get('/api/campus-settings/:campusId', verifyFirebaseToken, loadUserProfile, 
         campusId,
         deliveryChargePerPerson: 150,
         accountTitle: "Maratib Ali",
-        bankName: "SadaPay",
-        accountNumber: "03330374616"
+        bankName: "Habib bank limited",
+        accountNumber: "54427000095103"
       });
     }
     
